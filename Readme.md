@@ -5,7 +5,7 @@
 
 <br>
 
-A Meetings API made using GO-lang and mongoDB. Tested using POSTMAN. API hosted locally on URL<br>
+An Instagram Backend API made using GO-lang and mongoDB. Tested using POSTMAN. API hosted locally on URL<br>
 
 ```ruby
 localhost:9000/
