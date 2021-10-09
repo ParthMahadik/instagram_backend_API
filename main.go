@@ -39,7 +39,7 @@ type (
 		USERID   string `json:"userid" bson:"userid"`
 		Name     string `json:"name" bson:"name"`
 		Email    string `json:"email" bson:"email"`
-		Password string `json:"_password" bson:"_password"`
+		Password string `json:"password" bson:"password"`
 	}
 )
 
@@ -122,7 +122,8 @@ func CreateUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	// json.NewDecoder(request.Body).Decode(&user)
 	collection := client.Database(dbName).Collection(collectionName)
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	// user.Password = user.Password.
+	user.Password, _ = HashPassword(user.Password)
+	print(user.Password)
 	result, _ := collection.InsertOne(ctx, user)
 	json.NewEncoder(response).Encode(result)
 }
