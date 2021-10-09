@@ -63,4 +63,4 @@ localhost:9000/users/<userid>
 ```ruby
 localhost:9000/users/posts/<userid>
 ```
-![Retriving entire list of Posts for a User using User ID](userspostsid.png "Get user")
+![Retriving entire list of Posts for a User using User ID](usersidpasswordencrypt.png "Get user")
