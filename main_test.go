@@ -10,7 +10,7 @@ func TestHealthCheckHandler(t *testing.T) {
 
 	// Test GET request for posts
 	// Create a request to pass to our handler.
-	req, err := http.NewRequest("GET", "/posts", nil)
+	req, err := http.NewRequest("GET", "/posts/id1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
