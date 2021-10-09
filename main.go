@@ -14,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var client *mongo.Client
@@ -38,7 +39,7 @@ type (
 		USERID   string `json:"userid" bson:"userid"`
 		Name     string `json:"name" bson:"name"`
 		Email    string `json:"email" bson:"email"`
-		Password string `json:"password" bson:"password"`
+		Password string `json:"_password" bson:"_password"`
 	}
 )
 
@@ -48,10 +49,12 @@ func main() {
 	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
 	client, _ = mongo.Connect(ctx, clientOptions)
 	router := mux.NewRouter()
+
 	router.HandleFunc("/posts", CreatePostEndpoint).Methods("POST")
-	router.HandleFunc("/user", CreateUserEndpoint).Methods("POST")
-	router.HandleFunc("/users/posts/", GetUserPostsEndpoint).Methods("GET")
+	router.HandleFunc("/users", CreateUserEndpoint).Methods("POST")
+	router.HandleFunc("/users/posts/{userid}", GetUserPostsEndpoint).Methods("GET")
 	router.HandleFunc("/posts/{id}", GetPostEndpoint).Methods("GET")
+	router.HandleFunc("/users/{userid}", GetUserEndpoint).Methods("GET")
 
 	http.ListenAndServe(port, router)
 }
@@ -72,9 +75,10 @@ func GetUserPostsEndpoint(response http.ResponseWriter, request *http.Request) {
 	var timeline []Post
 	collection := client.Database(dbName).Collection(collectionName)
 	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-	// params := mux.Vars(request)
-	// var id = params["id"]
-	cursor, err := collection.Find(ctx, bson.M{})
+	params := mux.Vars(request)
+	userid := params["userid"]
+	filter := bson.M{"userid": userid}
+	cursor, err := collection.Find(ctx, filter)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
@@ -118,22 +122,31 @@ func CreateUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	// json.NewDecoder(request.Body).Decode(&user)
 	collection := client.Database(dbName).Collection(collectionName)
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	// user.Password = user.Password.
 	result, _ := collection.InsertOne(ctx, user)
 	json.NewEncoder(response).Encode(result)
 }
 
 func GetUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("content-type", "application/json")
-	params := mux.Vars(request)
-	id := params["id"]
+	// params := mux.Vars(request)
+	// userid := params["userid"]
 	var user User
+	params := mux.Vars(request)
+	userid := params["userid"]
+	filter := bson.M{"userid": userid}
 	collection := client.Database(dbName).Collection(collectionName)
 	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-	err := collection.FindOne(ctx, Post{ID: id}).Decode(&user)
+	err := collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
 		return
 	}
 	json.NewEncoder(response).Encode(user)
+}
+
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
 }
