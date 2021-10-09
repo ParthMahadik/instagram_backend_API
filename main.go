@@ -3,20 +3,20 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
+
 	"net/http"
-	"os"
-	"os/signal"
-	"strings"
 	"time"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
-	mgo "gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
+	// mgo "gopkg.in/mgo.v2"
+	// "gopkg.in/mgo.v2/bson"
+	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var db *mgo.Database
+var client *mongo.Client
 
 const (
 	hostname       string = "localhost:27017"
@@ -26,144 +26,114 @@ const (
 )
 
 type (
-	postModel struct {
-		ID        string    `bson:"id"`
-		UserId    string    `bson:"userid"`
-		Caption   string    `bson:"caption"`
-		Imageurl  string    `bson:"imageurl"`
-		CreatedAt time.Time `bson:"createdAt"`
+	Post struct {
+		ID        string    `json:"id" bson:"id"`
+		UserId    string    `json:"userid" bson:"userid"`
+		Caption   string    `json:"caption" bson:"caption"`
+		Imageurl  string    `json:"imageurl" bson:"imageurl"`
+		CreatedAt time.Time `json:"createdat" bson:"createdat"`
 	}
 
-	post struct {
-		ID        string    `json:"id"`
-		UserId    string    `json:"userid"`
-		Caption   string    `json:"title"`
-		Imageurl  string    `json:"imageurl"`
-		CreatedAt time.Time `json:"created_at"`
+	User struct {
+		USERID   string `json:"userid" bson:"userid"`
+		Name     string `json:"name" bson:"name"`
+		Email    string `json:"email" bson:"email"`
+		Password string `json:"password" bson:"password"`
 	}
 )
 
-func init() {
-	sess, err := mgo.Dial(hostname)
-	checkErr(err)
-	sess.SetMode(mgo.Monotonic, true)
-	db = sess.DB(dbName)
-}
-
-func checkErr(err error) {
-	if err != nil {
-		log.Fatal(err) //respond with error page or message
-	}
-}
-
 func main() {
-	stopChan := make(chan os.Signal)
-	signal.Notify(stopChan, os.Interrupt)
+	fmt.Println("Starting the application...")
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	client, _ = mongo.Connect(ctx, clientOptions)
+	router := mux.NewRouter()
+	router.HandleFunc("/posts", CreatePostEndpoint).Methods("POST")
+	router.HandleFunc("/user", CreateUserEndpoint).Methods("POST")
+	router.HandleFunc("/users/posts/", GetUserPostsEndpoint).Methods("GET")
+	router.HandleFunc("/posts/{id}", GetPostEndpoint).Methods("GET")
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-
-	r.Mount("/", todoHandlers())
-
-	srv := &http.Server{
-		Addr:         port,
-		Handler:      r,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	go func() {
-		log.Println("Listening on port ", port)
-		if err := srv.ListenAndServe(); err != nil {
-			log.Printf("listen: %s\n", err)
-		}
-	}()
-
-	<-stopChan
-	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	srv.Shutdown(ctx)
-	defer cancel()
-	log.Println("Server gracefully stopped!")
-
+	http.ListenAndServe(port, router)
 }
 
-func createPost(w http.ResponseWriter, r *http.Request) {
-	var p post
+func CreatePostEndpoint(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("content-type", "application/json")
+	var post Post
+	// _ = json.NewDecoder(request.Body).Decode(&post)
+	json.NewDecoder(request.Body).Decode(&post)
+	collection := client.Database(dbName).Collection(collectionName)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	result, _ := collection.InsertOne(ctx, post)
+	json.NewEncoder(response).Encode(result)
+}
 
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		println(err)
+func GetUserPostsEndpoint(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("content-type", "application/json")
+	var timeline []Post
+	collection := client.Database(dbName).Collection(collectionName)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	// params := mux.Vars(request)
+	// var id = params["id"]
+	cursor, err := collection.Find(ctx, bson.M{})
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
 		return
 	}
-
-	// simple validation
-	// if p.ID == "" {
-	// 	println("Null Id")
-	// 	return
-	// }
-
-	// if input is okay, create a post
-	pm := postModel{
-		ID:        p.ID,
-		UserId:    p.UserId,
-		Caption:   p.Caption,
-		Imageurl:  p.Imageurl,
-		CreatedAt: time.Now(),
+	defer cursor.Close(ctx)
+	for cursor.Next(ctx) {
+		var post Post
+		cursor.Decode(&post)
+		timeline = append(timeline, post)
 	}
-	// if err := db.C(collectionName).Insert(&pm); err != nil {
-	// 	panic("error while adding to db")
-	// 	return
-	// }
-	db.C(collectionName).Insert(&pm)
-
+	if err := cursor.Err(); err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
+	}
+	json.NewEncoder(response).Encode(timeline)
 }
 
-func fetchPost(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(chi.URLParam(r, "id"))
-
-	// if !bson.IsObjectIdHex(id) {
-	// 	rnd.JSON(w, http.StatusBadRequest, renderer.M{
-	// 		"message": "The id is invalid",
-	// 	})
-	// 	return
-	// }
-
-	var p post
-
-	// if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-	// 	panic("error")
-	// 	return
-	// }
-	json.NewDecoder(r.Body).Decode(&p)
-
-	// simple validation
-	// if p.ID == "" {
-	// 	panic("null id")
-	// 	return
-	// }
-
-	// if input is okay, update a todo
-	// if err := db.C(collectionName).
-	// 	Find(
-	// 		bson.M{"id": id},
-	// 	); err != nil {
-	// 	panic("failed to fetch")
-	// 	return
-	// }
-	db.C(collectionName).
-		Find(
-			bson.M{"id": id},
-		)
+func GetPostEndpoint(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("content-type", "application/json")
+	params := mux.Vars(request)
+	id := params["id"]
+	var post Post
+	collection := client.Database(dbName).Collection(collectionName)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	filter := bson.M{"id": id}
+	err := collection.FindOne(ctx, filter).Decode(&post)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
+	}
+	json.NewEncoder(response).Encode(post)
 }
 
-func todoHandlers() http.Handler {
-	rg := chi.NewRouter()
-	rg.Group(func(r chi.Router) {
-		r.Get("/posts/{id}", fetchPost)
-		r.Post("/posts", createPost)
-		// r.Put("/{id}", updateTodo)
-		// r.Delete("/{id}", deleteTodo)
-	})
-	return rg
+func CreateUserEndpoint(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("content-type", "application/json")
+	var user User
+	_ = json.NewDecoder(request.Body).Decode(&user)
+	// json.NewDecoder(request.Body).Decode(&user)
+	collection := client.Database(dbName).Collection(collectionName)
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	result, _ := collection.InsertOne(ctx, user)
+	json.NewEncoder(response).Encode(result)
+}
+
+func GetUserEndpoint(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("content-type", "application/json")
+	params := mux.Vars(request)
+	id := params["id"]
+	var user User
+	collection := client.Database(dbName).Collection(collectionName)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	err := collection.FindOne(ctx, Post{ID: id}).Decode(&user)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		response.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
+	}
+	json.NewEncoder(response).Encode(user)
 }
