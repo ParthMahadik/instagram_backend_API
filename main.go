@@ -19,6 +19,7 @@ import (
 
 var client *mongo.Client
 
+// declaring constants
 const (
 	hostname       string = "localhost:27017"
 	dbName         string = "demo_instagram"
@@ -26,6 +27,7 @@ const (
 	port           string = ":9000"
 )
 
+//struct declaring for json and bson
 type (
 	Post struct {
 		ID        string    `json:"id" bson:"id"`
@@ -44,13 +46,14 @@ type (
 )
 
 func main() {
+	//MongoDB connect
 	fmt.Println("Starting the application...")
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
 	client, _ = mongo.Connect(ctx, clientOptions)
-	router := mux.NewRouter()
+	router := mux.NewRouter() //Router instance initiate
 
-	router.HandleFunc("/posts", CreatePostEndpoint).Methods("POST")
+	router.HandleFunc("/posts", CreatePostEndpoint).Methods("POST") //HandleFunc for Routing of Handler functions
 	router.HandleFunc("/users", CreateUserEndpoint).Methods("POST")
 	router.HandleFunc("/users/posts/{userid}", GetUserPostsEndpoint).Methods("GET")
 	router.HandleFunc("/posts/{id}", GetPostEndpoint).Methods("GET")
@@ -59,6 +62,7 @@ func main() {
 	http.ListenAndServe(port, router)
 }
 
+//function to create post
 func CreatePostEndpoint(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("content-type", "application/json")
 	var post Post
@@ -70,6 +74,7 @@ func CreatePostEndpoint(response http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(response).Encode(result)
 }
 
+//function to list all posts of a particular user
 func GetUserPostsEndpoint(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("content-type", "application/json")
 	var timeline []Post
@@ -98,6 +103,7 @@ func GetUserPostsEndpoint(response http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(response).Encode(timeline)
 }
 
+//function to get post
 func GetPostEndpoint(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("content-type", "application/json")
 	params := mux.Vars(request)
@@ -115,6 +121,7 @@ func GetPostEndpoint(response http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(response).Encode(post)
 }
 
+//function to create user
 func CreateUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("content-type", "application/json")
 	var user User
@@ -128,6 +135,7 @@ func CreateUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(response).Encode(result)
 }
 
+//function to get user info based on Id
 func GetUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("content-type", "application/json")
 	// params := mux.Vars(request)
@@ -147,6 +155,7 @@ func GetUserEndpoint(response http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(response).Encode(user)
 }
 
+//Function for hashing
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	return string(bytes), err
