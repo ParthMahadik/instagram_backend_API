@@ -16,10 +16,14 @@ Features:<br>
 ```ruby
 localhost:9000/posts/
 ```
+![Create Post](posts.png "Create Post")
+
 - [X] Creating a new User
 ```ruby
 localhost:9000/User/
 ```
+![Create User](users.png "Create User")
+
 Post<br>
 JSON Format:<br>
 
@@ -47,11 +51,16 @@ JSON Format:<br>
 ```ruby
 localhost:9000/posts/<id>
 ```
+![Retriving Post using Post ID](postsid.png "Get post")
+
 - [X] Retriving user using User ID<br>
 ```ruby
 localhost:9000/users/<userid>
 ```
+![Retriving user using User ID](usersid.png "Get user")
+
 - [X] Retriving entire list of Posts for a User using User ID<br>
 ```ruby
 localhost:9000/users/posts/<userid>
 ```
+![Retriving entire list of Posts for a User using User ID](userspostsid.png "Get user")
